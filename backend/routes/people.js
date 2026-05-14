@@ -79,6 +79,18 @@ router.get('/:id', async (req, res) => {
       ORDER BY t.date DESC, t.created_at DESC
     `, [req.userId, req.params.id]);
 
+    // At the end of GET /:id, before res.json():
+    const formattedTx = txResult.rows.map(row => ({
+      ...row,
+      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
+    }));
+    
+    res.json({
+      ...
+      transactions: formattedTx,
+      ...
+    });
+    
     res.json({
       ...person,
       total_receivable: parseFloat(receivableResult.rows[0].total),
