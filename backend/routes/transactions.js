@@ -69,7 +69,13 @@ router.get('/', async (req, res) => {
     }
 
     sql += ` ORDER BY t.date DESC, t.created_at DESC`;
-
+    // At the end of the GET / route, before res.json():
+    const formatted = result.rows.map(row => ({
+      ...row,
+      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
+    }));
+    res.json(formatted);
+    
     const result = await db.query(sql, params);
     res.json(result.rows);
   } catch (err) {
