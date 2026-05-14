@@ -55,19 +55,19 @@ router.get('/:id', async (req, res) => {
     const personResult = await db.query('SELECT * FROM people WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     const person = personResult.rows[0];
     if (!person) return res.status(404).json({ error: 'Person not found' });
-
+    
     const receivableResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND to_person_id = $2 AND type = 'receivable'`,
       [req.userId, person.id]
     );
-
+    
     const payableResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND from_person_id = $2 AND type = 'payable'`,
       [req.userId, person.id]
     );
-
+    
     const txResult = await db.query(`
       SELECT t.*, 
         fa.name as from_account_name,
@@ -78,31 +78,24 @@ router.get('/:id', async (req, res) => {
       WHERE t.user_id = $1 AND (t.from_person_id = $2 OR t.to_person_id = $2)
       ORDER BY t.date DESC, t.created_at DESC
     `, [req.userId, req.params.id]);
-
-    // At the end of GET /:id, before res.json():
+    
+    // Format dates
     const formattedTx = txResult.rows.map(row => ({
       ...row,
       date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
     }));
     
     res.json({
-      ...
-      transactions: formattedTx,
-      ...
-    });
-    
-    res.json({
       ...person,
       total_receivable: parseFloat(receivableResult.rows[0].total),
       total_payable: parseFloat(payableResult.rows[0].total),
       net_balance: parseFloat(receivableResult.rows[0].total) - parseFloat(payableResult.rows[0].total),
-      transactions: txResult.rows
+      transactions: formattedTx
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 router.put('/:id', async (req, res) => {
   try {
     const { name, phone, email } = req.body;
