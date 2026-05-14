@@ -98,7 +98,19 @@ router.get('/summary', async (req, res) => {
         balance: parseFloat(acc.opening_balance) + parseFloat(incomingResult.rows[0].total) - parseFloat(outgoingResult.rows[0].total)
       };
     }));
-
+    
+    // At the end of the GET /summary route, before res.json():
+    const formattedTx = recentTxResult.rows.map(row => ({
+      ...row,
+      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
+    }));
+    
+    res.json({
+      ...
+      recent_transactions: formattedTx,
+      ...
+    });
+    
     res.json({
       total_balance: totalBalance,
       total_income: parseFloat(totalIncomeResult.rows[0].total),
