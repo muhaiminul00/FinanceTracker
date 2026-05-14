@@ -5,10 +5,10 @@ const router = express.Router();
 router.get('/summary', async (req, res) => {
   try {
     const { from_date, to_date } = req.query;
-
+    
     let dateFilter = '';
     let dateParams = [];
-
+    
     if (from_date && to_date) {
       dateFilter = ' AND date >= $2 AND date <= $3';
       dateParams = [from_date, to_date];
@@ -19,10 +19,10 @@ router.get('/summary', async (req, res) => {
       dateFilter = ' AND date <= $2';
       dateParams = [to_date];
     }
-
+    
     const accountsResult = await db.query('SELECT id, opening_balance FROM accounts WHERE user_id = $1', [req.userId]);
     const accounts = accountsResult.rows;
-
+    
     let totalBalance = 0;
     for (const acc of accounts) {
       const incomingResult = await db.query(
@@ -30,40 +30,40 @@ router.get('/summary', async (req, res) => {
          WHERE to_account_id = $1 AND type IN ('income', 'transfer', 'payable')`,
         [acc.id]
       );
-
+      
       const outgoingResult = await db.query(
         `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
          WHERE from_account_id = $1 AND type IN ('expense', 'transfer', 'receivable')`,
         [acc.id]
       );
-
+      
       totalBalance += parseFloat(acc.opening_balance) + parseFloat(incomingResult.rows[0].total) - parseFloat(outgoingResult.rows[0].total);
     }
-
+    
     const totalIncomeResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND type = 'income' ${dateFilter}`,
       [req.userId, ...dateParams]
     );
-
+    
     const totalExpenseResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND type = 'expense' ${dateFilter}`,
       [req.userId, ...dateParams]
     );
-
+    
     const totalReceivableResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND type = 'receivable' ${dateFilter}`,
       [req.userId, ...dateParams]
     );
-
+    
     const totalPayableResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
        WHERE user_id = $1 AND type = 'payable' ${dateFilter}`,
       [req.userId, ...dateParams]
     );
-
+    
     const recentTxResult = await db.query(`
       SELECT t.*, 
         fa.name as from_account_name,
@@ -79,37 +79,31 @@ router.get('/summary', async (req, res) => {
       ORDER BY t.date DESC, t.created_at DESC
       LIMIT 10
     `, [req.userId]);
-
+    
+    // Format dates
+    const formattedTx = recentTxResult.rows.map(row => ({
+      ...row,
+      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
+    }));
+    
     const accountBreakdown = await Promise.all(accounts.map(async acc => {
       const incomingResult = await db.query(
         `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
          WHERE to_account_id = $1 AND type IN ('income', 'transfer', 'payable')`,
         [acc.id]
       );
-
+      
       const outgoingResult = await db.query(
         `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
          WHERE from_account_id = $1 AND type IN ('expense', 'transfer', 'receivable')`,
         [acc.id]
       );
-
+      
       return {
         id: acc.id,
         balance: parseFloat(acc.opening_balance) + parseFloat(incomingResult.rows[0].total) - parseFloat(outgoingResult.rows[0].total)
       };
     }));
-    
-    // At the end of the GET /summary route, before res.json():
-    const formattedTx = recentTxResult.rows.map(row => ({
-      ...row,
-      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
-    }));
-    
-    res.json({
-      ...
-      recent_transactions: formattedTx,
-      ...
-    });
     
     res.json({
       total_balance: totalBalance,
@@ -118,7 +112,7 @@ router.get('/summary', async (req, res) => {
       total_receivable: parseFloat(totalReceivableResult.rows[0].total),
       total_payable: parseFloat(totalPayableResult.rows[0].total),
       net_worth: totalBalance + parseFloat(totalReceivableResult.rows[0].total) - parseFloat(totalPayableResult.rows[0].total),
-      recent_transactions: recentTxResult.rows,
+      recent_transactions: formattedTx,
       account_breakdown: accountBreakdown,
       date_range: { from_date: from_date || null, to_date: to_date || null }
     });
