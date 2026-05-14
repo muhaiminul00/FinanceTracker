@@ -5,21 +5,21 @@ const router = express.Router();
 async function getAccountBalance(accountId) {
   const accResult = await db.query('SELECT COALESCE(opening_balance, 0) as opening FROM accounts WHERE id = $1', [accountId]);
   const opening = accResult.rows[0]?.opening || 0;
-
+  
   const incomingResult = await db.query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
      WHERE to_account_id = $1 AND type IN ('income', 'transfer', 'payable')`,
     [accountId]
   );
   const incoming = parseFloat(incomingResult.rows[0].total);
-
+  
   const outgoingResult = await db.query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
      WHERE from_account_id = $1 AND type IN ('expense', 'transfer', 'receivable')`,
     [accountId]
   );
   const outgoing = parseFloat(outgoingResult.rows[0].total);
-
+  
   return opening + incoming - outgoing;
 }
 
@@ -27,12 +27,12 @@ router.get('/', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM accounts WHERE user_id = $1 ORDER BY created_at DESC', [req.userId]);
     const accounts = result.rows;
-
+    
     const withBalances = await Promise.all(accounts.map(async acc => ({
       ...acc,
       current_balance: await getAccountBalance(acc.id)
     })));
-
+    
     res.json(withBalances);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -43,13 +43,13 @@ router.post('/', async (req, res) => {
   try {
     const { name, type, opening_balance, color, icon } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'Name and type required' });
-
+    
     const result = await db.query(
       `INSERT INTO accounts (user_id, name, type, opening_balance, color, icon) 
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [req.userId, name, type, opening_balance || 0, color, icon]
     );
-
+    
     res.status(201).json({ 
       ...result.rows[0],
       current_balance: opening_balance || 0
@@ -64,7 +64,7 @@ router.get('/:id', async (req, res) => {
     const accResult = await db.query('SELECT * FROM accounts WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     const account = accResult.rows[0];
     if (!account) return res.status(404).json({ error: 'Account not found' });
-
+    
     const txResult = await db.query(`
       SELECT t.*, 
         fa.name as from_account_name,
@@ -80,22 +80,16 @@ router.get('/:id', async (req, res) => {
       ORDER BY t.date DESC, t.created_at DESC
     `, [req.userId, req.params.id]);
     
-    // At the end of GET /:id, before res.json():
+    // Format dates
     const formattedTx = txResult.rows.map(row => ({
       ...row,
       date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
     }));
     
     res.json({
-      ...
-      transactions: formattedTx,
-      ...
-    });
-    
-    res.json({
       ...account,
       current_balance: await getAccountBalance(account.id),
-      transactions: txResult.rows
+      transactions: formattedTx
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -109,9 +103,9 @@ router.put('/:id', async (req, res) => {
       'UPDATE accounts SET name = $1, type = $2, opening_balance = $3, color = $4, icon = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
       [name, type, opening_balance, color, icon, req.params.id, req.userId]
     );
-
+    
     if (result.rowCount === 0) return res.status(404).json({ error: 'Account not found' });
-
+    
     res.json({ 
       ...result.rows[0],
       current_balance: await getAccountBalance(Number(req.params.id))
