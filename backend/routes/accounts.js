@@ -79,7 +79,19 @@ router.get('/:id', async (req, res) => {
       WHERE t.user_id = $1 AND (t.from_account_id = $2 OR t.to_account_id = $2)
       ORDER BY t.date DESC, t.created_at DESC
     `, [req.userId, req.params.id]);
-
+    
+    // At the end of GET /:id, before res.json():
+    const formattedTx = txResult.rows.map(row => ({
+      ...row,
+      date: row.date ? new Date(row.date).toISOString().split('T')[0] : row.date
+    }));
+    
+    res.json({
+      ...
+      transactions: formattedTx,
+      ...
+    });
+    
     res.json({
       ...account,
       current_balance: await getAccountBalance(account.id),
